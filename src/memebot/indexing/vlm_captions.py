@@ -1,0 +1,93 @@
+"""День 2: описания мемов от локальной VLM через Ollama.
+
+Ручные описания из @text_meme уже есть, поэтому VLM здесь нужна для двух вещей:
+  1. абляция «ручное описание vs описание VLM» — насколько поиск зависит от качества текста;
+  2. индексация новых мемов, у которых ручного описания нет.
+
+Результат дописывается в data/processed/vlm_captions.jsonl, поэтому прогон можно
+прервать и продолжить с того же места.
+
+Запуск:  python -m memebot.indexing.vlm_captions [--limit 50] [--model ...]
+"""
+
+import argparse
+import io
+import json
+import time
+
+import ollama
+import pandas as pd
+from PIL import Image
+from tqdm import tqdm
+
+from memebot.config import settings
+
+DEFAULT_MODEL = "hf.co/Qwen/Qwen3-VL-8B-Instruct-GGUF:Q4_K_M"
+
+PROMPT = """Ты описываешь мем для поисковой системы. Ответь строго JSON без пояснений:
+{
+  "ocr": "весь текст на картинке дословно, на языке оригинала",
+  "description": "2-4 предложения на русском: что изображено и в чём шутка",
+  "situations": ["3-5 жизненных ситуаций, в которых этот мем уместно отправить, коротко"],
+  "emotions": ["1-3 эмоции: например, усталость, сарказм, радость"]
+}"""
+
+
+def load_image(path: str, max_side: int) -> bytes:
+    """Уменьшаем картинку: число визуальных токенов, а с ним и время, растёт с площадью."""
+    img = Image.open(path)
+    img.thumbnail((max_side, max_side))
+    buf = io.BytesIO()
+    img.save(buf, "JPEG", quality=90)
+    return buf.getvalue()
+
+
+def caption(client: ollama.Client, model: str, image: bytes) -> dict:
+    resp = client.chat(
+        model=model,
+        messages=[{"role": "user", "content": PROMPT, "images": [image]}],
+        format="json",
+        options={"temperature": 0.2, "num_ctx": 4096},
+    )
+    return json.loads(resp["message"]["content"])
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--model", default=DEFAULT_MODEL)
+    parser.add_argument("--limit", type=int, default=None, help="обработать не больше N новых мемов")
+    parser.add_argument("--max-side", type=int, default=768)
+    parser.add_argument("--out", default="vlm_captions.jsonl")
+    args = parser.parse_args()
+
+    memes = pd.read_parquet(settings.processed_dir / "memes.parquet")
+    out_path = settings.processed_dir / args.out
+
+    done = set()
+    if out_path.exists():
+        with out_path.open(encoding="utf-8") as f:
+            done = {json.loads(line)["meme_id"] for line in f}
+    todo = memes[~memes["meme_id"].isin(done)]
+    if args.limit:
+        todo = todo.head(args.limit)
+    print(f"Готово ранее: {len(done)}, в очереди: {len(todo)}")
+
+    client = ollama.Client(host=settings.ollama_host)
+    errors = 0
+    with out_path.open("a", encoding="utf-8") as f:
+        for row in tqdm(todo.itertuples(), total=len(todo)):
+            t0 = time.perf_counter()
+            try:
+                result = caption(client, args.model, load_image(settings.data_dir / row.image_path, args.max_side))
+            except (json.JSONDecodeError, ollama.ResponseError) as e:
+                errors += 1
+                tqdm.write(f"{row.meme_id}: {type(e).__name__}: {e}")
+                continue
+            record = {"meme_id": row.meme_id, "model": args.model, "seconds": round(time.perf_counter() - t0, 2), **result}
+            f.write(json.dumps(record, ensure_ascii=False) + "\n")
+            f.flush()
+    print(f"Ошибок: {errors}")
+
+
+if __name__ == "__main__":
+    main()
