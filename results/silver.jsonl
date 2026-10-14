@@ -1,3 +1,6 @@
 {"system": "bm25", "field": "human", "recall@1": 0.6777, "recall@5": 0.8142, "recall@10": 0.8525, "mrr@10": 0.7364, "ndcg@10": 0.7645, "index_s": 4.9, "ms_per_query": 7.31, "device": "auto"}
 {"system": "multilingual-e5-base", "field": "human", "recall@1": 0.6803, "recall@5": 0.8226, "recall@10": 0.8588, "mrr@10": 0.7426, "ndcg@10": 0.7709, "index_s": 415.1, "ms_per_query": 11.49, "device": "cpu"}
 {"system": "rrf(bm25 + multilingual-e5-base)", "field": "human", "recall@1": 0.7465, "recall@5": 0.8751, "recall@10": 0.915, "mrr@10": 0.8034, "ndcg@10": 0.8303}
+{"system": "USER-bge-m3", "field": "human", "recall@1": 0.7218, "recall@5": 0.8546, "recall@10": 0.8961, "mrr@10": 0.7786, "ndcg@10": 0.8068, "index_s": 1383.6, "ms_per_query": 33.96, "device": "cpu"}
+{"system": "rrf(bm25 + USER-bge-m3)", "field": "human", "recall@1": 0.758, "recall@5": 0.8866, "recall@10": 0.9234, "mrr@10": 0.8148, "ndcg@10": 0.8411}
+{"system": "rrf(bm25 + multilingual-e5-base + USER-bge-m3)", "field": "human", "recall@1": 0.7706, "recall@5": 0.9066, "recall@10": 0.9412, "mrr@10": 0.8294, "ndcg@10": 0.8566}
