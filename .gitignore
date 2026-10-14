@@ -1,0 +1,36 @@
+# Секреты
+.env
+kaggle.json
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+
+# Данные и артефакты (большие, в git не храним)
+data/*
+!data/*/
+data/*/*
+!data/*/.gitkeep
+models/
+checkpoints/
+runs/
+wandb/
+qdrant_storage/
+*.parquet
+*.npy
+*.safetensors
+*.gguf
+
+# Ноутбуки
+.ipynb_checkpoints/
+
+# IDE / ОС
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
