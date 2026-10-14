@@ -1,4 +1,6 @@
 import hashlib
+import json
+from pathlib import Path
 
 import numpy as np
 import torch
@@ -26,6 +28,10 @@ class DenseRetriever:
         self.model.max_seq_length = max_seq_length
         self.batch_size = batch_size
         self.q_prefix, self.d_prefix = PREFIXES.get(model_name, ("", ""))
+        local = Path(model_name) / "prefixes.json"  # дообученная модель хранит префиксы базовой
+        if local.exists():
+            saved = json.loads(local.read_text(encoding="utf-8"))
+            self.q_prefix, self.d_prefix = saved["query"], saved["doc"]
 
     def encode(self, texts: list[str], prefix: str, show_progress: bool = False) -> np.ndarray:
         return self.model.encode(

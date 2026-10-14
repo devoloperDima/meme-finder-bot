@@ -18,6 +18,12 @@ class Settings(BaseSettings):
 
     data_dir: Path = Path("data")
 
+    # Бот
+    search_model: str = "deepvk/USER-bge-m3"
+    search_device: str | None = None
+    bot_db_path: Path = Path("data/bot/bot.db")
+    bot_user_salt: str = ""  # соль для хеширования user_id; пусто — берётся из токена
+
     @property
     def raw_dir(self) -> Path:
         return self.data_dir / "raw"

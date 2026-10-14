@@ -26,6 +26,7 @@ imagehash
 
 # Модели и поиск
 transformers
+accelerate
 sentence-transformers
 open_clip_torch
 rank-bm25
