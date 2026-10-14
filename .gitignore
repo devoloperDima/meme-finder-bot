@@ -16,6 +16,9 @@ data/*
 !data/*/
 data/*/*
 !data/*/.gitkeep
+# ручной eval-набор маленький и ценный — храним в git
+!data/eval/*.jsonl
+!data/eval/*.json
 models/
 checkpoints/
 runs/

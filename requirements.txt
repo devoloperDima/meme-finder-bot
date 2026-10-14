@@ -1,7 +1,8 @@
 # CUDA-сборки PyTorch. Без этого индекса pip возьмёт с PyPI CPU-версию.
---extra-index-url https://download.pytorch.org/whl/cu130
-torch==2.14.1+cu130
-torchvision==0.29.1+cu130
+--extra-index-url https://download.pytorch.org/whl/cu128
+torch==2.11.0+cu128
+torchvision==0.26.0+cu128
+# 2.14+cu130 Smart App Control начал блокировать (torch/_C.pyd), 2.11 проходит.
 
 # Smart App Control в Windows 11 блокирует DLL свежих сборок без «репутации».
 # Эти версии проверены и не блокируются; не обновлять без повторной проверки.
@@ -28,15 +29,14 @@ transformers
 sentence-transformers
 open_clip_torch
 rank-bm25
+snowballstemmer
 qdrant-client
 ollama
-
-# Оценка
-ranx
 
 # Сервинг
 aiogram>=3
 fastapi
+python-multipart
 uvicorn[standard]
 
 # Разработка

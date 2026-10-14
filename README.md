@@ -40,7 +40,7 @@ notebooks/       исследования и графики
 ```bash
 py -3.12 -m venv .venv
 .venv\Scripts\activate
-pip install -r requirements.txt   # включая PyTorch с CUDA 13
+pip install -r requirements.txt   # включая PyTorch с CUDA
 copy .env.example .env   # и вписать токены
 python scripts/check_env.py
 ```
