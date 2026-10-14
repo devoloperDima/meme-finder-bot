@@ -110,9 +110,11 @@ button{font-size:16px;padding:8px 18px;margin-right:8px;border-radius:8px;border
 <script>
 document.querySelectorAll('.card').forEach(c=>c.onclick=()=>{c.dataset.g=(+c.dataset.g+1)%3;
 c.querySelector('.badge').textContent=['—','подходит','идеально'][c.dataset.g]});
-document.getElementById('f').onsubmit=()=>{const g={};document.querySelectorAll('.card').forEach(c=>g[c.dataset.id]=+c.dataset.g);
+document.getElementById('f').onsubmit=e=>{if(Date.now()<ready){e.preventDefault();return}const g={};document.querySelectorAll('.card').forEach(c=>g[c.dataset.id]=+c.dataset.g);
 document.getElementById('grades').value=JSON.stringify(g)};
-document.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();document.getElementById('f').requestSubmit()}};
+// Зажатый Enter даёт автоповтор и пролистывает запросы без разметки: игнорируем повторы и первую секунду.
+const ready=Date.now()+1000;
+document.onkeydown=e=>{if(e.key!=='Enter')return;e.preventDefault();if(e.repeat||Date.now()<ready)return;document.getElementById('f').requestSubmit()};
 </script></body></html>"""
 
 

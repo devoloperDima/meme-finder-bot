@@ -32,7 +32,7 @@ from sentence_transformers.util import mine_hard_negatives
 
 from memebot.evaluation.datasets import add_split
 from memebot.search.base import build_docs, load_memes
-from memebot.search.dense import PREFIXES
+from memebot.search.dense import prefixes_for
 
 MODELS_DIR = Path("models")
 
@@ -79,7 +79,7 @@ def main() -> None:
     torch.manual_seed(args.seed)
     name = args.name or "-".join([args.base.split("/")[-1], *args.queries, f"hn{args.hard_negatives}"])
     out_dir = MODELS_DIR / name
-    q_prefix, d_prefix = PREFIXES.get(args.base, ("", ""))
+    q_prefix, d_prefix = prefixes_for(args.base)
 
     memes = add_split(load_memes())
     if "vlm" in args.queries or args.field != "human":

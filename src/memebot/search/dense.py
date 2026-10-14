@@ -11,11 +11,14 @@ from memebot.config import settings
 EMB_CACHE = settings.data_dir / "runs" / "emb"
 
 # Префиксы, с которыми модели обучались. Без них качество e5/FRIDA заметно падает.
-PREFIXES = {
-    "intfloat/multilingual-e5-base": ("query: ", "passage: "),
-    "intfloat/multilingual-e5-large": ("query: ", "passage: "),
-    "ai-forever/FRIDA": ("search_query: ", "search_document: "),
-}
+PREFIX_RULES = [
+    ("multilingual-e5", ("query: ", "passage: ")),
+    ("FRIDA", ("search_query: ", "search_document: ")),
+]
+
+
+def prefixes_for(model_name: str) -> tuple[str, str]:
+    return next((p for key, p in PREFIX_RULES if key in model_name), ("", ""))
 
 
 class DenseRetriever:
@@ -27,7 +30,7 @@ class DenseRetriever:
         self.model = SentenceTransformer(model_name, device=device, model_kwargs=kwargs)
         self.model.max_seq_length = max_seq_length
         self.batch_size = batch_size
-        self.q_prefix, self.d_prefix = PREFIXES.get(model_name, ("", ""))
+        self.q_prefix, self.d_prefix = prefixes_for(model_name)
         local = Path(model_name) / "prefixes.json"  # дообученная модель хранит префиксы базовой
         if local.exists():
             saved = json.loads(local.read_text(encoding="utf-8"))

@@ -19,6 +19,7 @@ from memebot.config import settings
 from memebot.search.service import MemeSearcher
 
 MAX_RESULTS = 10
+ACTIONS = {"like", "dislike", "next"}
 GREETING = (
     "Привет! Опиши ситуацию — пришлю подходящий мем.\n\n"
     "Например: «когда препод говорит, что контрольная будет лёгкой» или «понедельник, снова на работу».\n\n"
@@ -38,13 +39,13 @@ def keyboard(impression_id: int) -> InlineKeyboardMarkup:
     ]])
 
 
-async def send_meme(message: Message, search_id: int, rank: int) -> None:
+async def send_meme(message: Message, user_id: int, search_id: int, rank: int) -> None:
     results = storage.results(search_id)
     if rank >= len(results):
         await message.answer("Мемы по этому запросу закончились 🙃 Попробуй описать ситуацию иначе.")
         return
     meme_id = results[rank]
-    impression_id = storage.log_impression(search_id, meme_id, rank)
+    impression_id = storage.log_impression(search_id, user_id, meme_id, rank)
     photo = storage.cached_file_id(meme_id) or FSInputFile(settings.data_dir / searcher.image_path[meme_id])
     sent = await message.answer_photo(photo, reply_markup=keyboard(impression_id))
     if isinstance(photo, FSInputFile):  # повторно не загружаем: Telegram отдаёт file_id
@@ -62,22 +63,25 @@ async def on_text(message: Message) -> None:
     hits, timings = await asyncio.to_thread(searcher.search, query, MAX_RESULTS)
     search_id = storage.log_search(message.from_user.id, query, [h.meme_id for h in hits], timings)
     logging.info("search %d %.0f ms", search_id, sum(timings.values()))
-    await send_meme(message, search_id, 0)
+    await send_meme(message, message.from_user.id, search_id, 0)
 
 
 @dp.callback_query(F.data.startswith("fb:"))
 async def on_feedback(callback: CallbackQuery) -> None:
-    _, impression_id, action = callback.data.split(":")
-    impression = storage.impression(int(impression_id))
-    if impression is None:
+    parts = callback.data.split(":")
+    if len(parts) != 3 or not parts[1].isdigit() or parts[2] not in ACTIONS:
         await callback.answer()
         return
-    storage.log_feedback(int(impression_id), action)
+    impression_id, action = int(parts[1]), parts[2]
+    impression = storage.impression(impression_id, callback.from_user.id)
+    if impression is None or not storage.log_feedback(impression_id, action):
+        await callback.answer()
+        return
     search_id, _, rank = impression
     await callback.message.edit_reply_markup(reply_markup=None)  # одна реакция на показ
     if action == "next":
         await callback.answer()
-        await send_meme(callback.message, search_id, rank + 1)
+        await send_meme(callback.message, callback.from_user.id, search_id, rank + 1)
     else:
         await callback.answer("Спасибо! 🙌" if action == "like" else "Учту 👌")
 

@@ -14,10 +14,10 @@ CREATE TABLE IF NOT EXISTS searches (
     bm25_ms REAL, dense_ms REAL, fuse_ms REAL
 );
 CREATE TABLE IF NOT EXISTS impressions (
-    id INTEGER PRIMARY KEY, search_id INTEGER, meme_id TEXT, rank INTEGER, ts REAL
+    id INTEGER PRIMARY KEY, search_id INTEGER, user_hash TEXT, meme_id TEXT, rank INTEGER, ts REAL
 );
 CREATE TABLE IF NOT EXISTS feedback (
-    id INTEGER PRIMARY KEY, impression_id INTEGER, action TEXT, ts REAL
+    id INTEGER PRIMARY KEY, impression_id INTEGER UNIQUE, action TEXT, ts REAL  -- одна реакция на показ
 );
 CREATE TABLE IF NOT EXISTS photo_cache (meme_id TEXT PRIMARY KEY, file_id TEXT);
 """
@@ -46,23 +46,33 @@ class Storage:
         row = self.db.execute("SELECT results FROM searches WHERE id = ?", (search_id,)).fetchone()
         return row[0].split(",") if row and row[0] else []
 
-    def log_impression(self, search_id: int, meme_id: str, rank: int) -> int:
+    def log_impression(self, search_id: int, user_id: int, meme_id: str, rank: int) -> int:
         cur = self.db.execute(
-            "INSERT INTO impressions (search_id, meme_id, rank, ts) VALUES (?,?,?,?)",
-            (search_id, meme_id, rank, time.time()),
+            "INSERT INTO impressions (search_id, user_hash, meme_id, rank, ts) VALUES (?,?,?,?,?)",
+            (search_id, self.user_hash(user_id), meme_id, rank, time.time()),
         )
         self.db.commit()
         return cur.lastrowid
 
-    def impression(self, impression_id: int) -> tuple[int, str, int] | None:
-        """(search_id, meme_id, rank)"""
+    def impression(self, impression_id: int, user_id: int) -> tuple[int, str, int] | None:
+        """(search_id, meme_id, rank) — только если показ принадлежит этому пользователю.
+
+        callback_data можно подделать модифицированным клиентом, поэтому id показа из кнопки
+        сверяем с владельцем: иначе можно засорять метрики и листать чужую выдачу.
+        """
         return self.db.execute(
-            "SELECT search_id, meme_id, rank FROM impressions WHERE id = ?", (impression_id,)
+            "SELECT search_id, meme_id, rank FROM impressions WHERE id = ? AND user_hash = ?",
+            (impression_id, self.user_hash(user_id)),
         ).fetchone()
 
-    def log_feedback(self, impression_id: int, action: str) -> None:
-        self.db.execute("INSERT INTO feedback (impression_id, action, ts) VALUES (?,?,?)", (impression_id, action, time.time()))
+    def log_feedback(self, impression_id: int, action: str) -> bool:
+        """False, если реакция на этот показ уже была."""
+        cur = self.db.execute(
+            "INSERT OR IGNORE INTO feedback (impression_id, action, ts) VALUES (?,?,?)",
+            (impression_id, action, time.time()),
+        )
         self.db.commit()
+        return cur.rowcount == 1
 
     def cached_file_id(self, meme_id: str) -> str | None:
         row = self.db.execute("SELECT file_id FROM photo_cache WHERE meme_id = ?", (meme_id,)).fetchone()
