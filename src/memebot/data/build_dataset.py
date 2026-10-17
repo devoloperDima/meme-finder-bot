@@ -80,7 +80,7 @@ def load_raw(raw_dir: Path) -> tuple[list[Raw], int]:
     soul = raw_dir / SOURCES["soulqrat"]
     if soul.exists():
         for row in pd.read_csv(soul / "dataset_extended.csv").fillna("").to_dict("records"):
-            path = soul / "images" / row["filename"]
+            path = soul / "images" / Path(str(row["filename"])).name  # имя из CSV — без каталогов и ../
             if path.exists():
                 desc = f"Текст на картинке: «{row['ocr'].strip()}». {row['scene_description'].strip()}"
                 items.append(Raw("soulqrat", int(Path(row["filename"]).stem.split("_")[-1]), path.read_bytes(), desc))

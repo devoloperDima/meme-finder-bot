@@ -104,13 +104,19 @@ button{font-size:16px;padding:8px 18px;margin-right:8px;border-radius:8px;border
 <form method="post" action="/save" id="f"><input type="hidden" name="qid" value="__QID__">
 <input type="hidden" name="grades" id="grades">
 <button class="save" type="submit">Сохранить и дальше (Enter)</button>
+<button class="nav" type="submit" id="none">Ничего не подходит</button>
 <a href="/?qid=__PREV__"><button class="nav" type="button">← Назад</button></a>
-<a href="/?qid=__NEXT__"><button class="nav" type="button">Пропустить →</button></a></form></header>
+<a href="/?qid=__NEXT__"><button class="nav" type="button">Пропустить →</button></a>
+<span id="hint" style="color:#e3b341;margin-left:12px"></span></form></header>
 <div class="grid">__CARDS__</div>
 <script>
 document.querySelectorAll('.card').forEach(c=>c.onclick=()=>{c.dataset.g=(+c.dataset.g+1)%3;
-c.querySelector('.badge').textContent=['—','подходит','идеально'][c.dataset.g]});
-document.getElementById('f').onsubmit=e=>{if(Date.now()<ready){e.preventDefault();return}const g={};document.querySelectorAll('.card').forEach(c=>g[c.dataset.id]=+c.dataset.g);
+c.querySelector('.badge').textContent=['—','подходит','идеально'][c.dataset.g];document.getElementById('hint').textContent=''});
+// Пустое сохранение — только явной кнопкой «Ничего не подходит»: Enter без отметок не листает дальше.
+document.getElementById('f').onsubmit=e=>{if(Date.now()<ready){e.preventDefault();return}
+const g={};let marked=0;document.querySelectorAll('.card').forEach(c=>{g[c.dataset.id]=+c.dataset.g;marked+=+c.dataset.g>0});
+if(!marked&&(!e.submitter||e.submitter.id!=='none')){e.preventDefault();
+document.getElementById('hint').textContent='Кликни по подходящим мемам или нажми «Ничего не подходит»';return}
 document.getElementById('grades').value=JSON.stringify(g)};
 // Зажатый Enter даёт автоповтор и пролистывает запросы без разметки: игнорируем повторы и первую секунду.
 const ready=Date.now()+1000;
