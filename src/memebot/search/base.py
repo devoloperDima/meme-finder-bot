@@ -54,15 +54,26 @@ def _join(*parts) -> str:
     return "\n".join(out)
 
 
+def _vlm_text(r) -> str:
+    return _join(r.get("vlm_ocr"), r.get("vlm_description"), r.get("vlm_situations"), r.get("vlm_emotions"))
+
+
+def _human(r) -> str:
+    """Ручное описание; у мемов из каналов без описаний — подпись поста + текст VLM."""
+    return _join(r["description"]) or _join(r.get("caption"), _vlm_text(r))
+
+
 # Варианты текстового представления мема — для абляции «что индексировать».
 DOC_FIELDS = {
-    "human": lambda r: _join(r["description"]),
-    "vlm": lambda r: _join(r.get("vlm_ocr"), r.get("vlm_description"), r.get("vlm_situations"), r.get("vlm_emotions")),
-    "human+vlm": lambda r: _join(r["description"], r.get("vlm_situations"), r.get("vlm_emotions")),
+    "human": _human,
+    "vlm": _vlm_text,
+    "human+vlm": lambda r: _join(_human(r), r.get("vlm_situations"), r.get("vlm_emotions")),
 }
 
 
 def build_docs(memes: pd.DataFrame, field: str) -> tuple[list[str], list[str]]:
+    """(id, текст) для всех мемов, у которых текст есть: без описания и VLM мем найти нечем."""
     fn = DOC_FIELDS[field]
-    records = memes.to_dict("records")
-    return [r["meme_id"] for r in records], [fn(r) for r in records]
+    pairs = [(r["meme_id"], fn(r)) for r in memes.to_dict("records")]
+    pairs = [(m, d) for m, d in pairs if d]
+    return [m for m, _ in pairs], [d for _, d in pairs]

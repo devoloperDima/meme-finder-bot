@@ -45,16 +45,32 @@ class DenseRetriever:
             show_progress_bar=show_progress,
         ).astype(np.float32)
 
+    def _cache_path(self) -> Path:
+        """Кэш по документам; у локальной (дообученной) модели в имя входит время изменения весов,
+        чтобы переобученная модель с тем же именем не взяла старые векторы."""
+        tag = self.name
+        weights = Path(self.model_name) / "model.safetensors"
+        if weights.exists():
+            tag += f"-{int(weights.stat().st_mtime)}"
+        return EMB_CACHE / f"{tag}.npz"
+
     def fit(self, doc_ids: list[str], docs: list[str]) -> None:
+        """Векторы документов кэшируются по хешу текста: при росте корпуса считаются только новые."""
         self.doc_ids = np.array(doc_ids)
-        key = hashlib.sha1("\x00".join([self.model_name, *docs]).encode()).hexdigest()[:12]
-        cache = EMB_CACHE / f"{self.name}-{key}.npy"
-        if cache.exists():
-            self.doc_emb = np.load(cache)
-            return
-        self.doc_emb = self.encode(docs, self.d_prefix, show_progress=True)
-        cache.parent.mkdir(parents=True, exist_ok=True)
-        np.save(cache, self.doc_emb)
+        keys = [hashlib.sha1((self.d_prefix + d).encode()).hexdigest() for d in docs]
+        path = self._cache_path()
+        cache: dict[str, np.ndarray] = {}
+        if path.exists():
+            data = np.load(path)
+            cache = dict(zip(data["keys"], data["vectors"]))
+        text_by_key = dict(zip(keys, docs))
+        todo = [k for k in text_by_key if k not in cache]
+        if todo:
+            vectors = self.encode([text_by_key[k] for k in todo], self.d_prefix, show_progress=True)
+            cache.update(zip(todo, vectors))
+            path.parent.mkdir(parents=True, exist_ok=True)
+            np.savez(path, keys=np.array(list(cache)), vectors=np.stack(list(cache.values())))
+        self.doc_emb = np.stack([cache[k] for k in keys])
 
     def search(self, queries: list[str], k: int = 100) -> list[list[tuple[str, float]]]:
         q = self.encode(queries, self.q_prefix)

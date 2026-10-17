@@ -45,6 +45,7 @@ class Raw:
     description: str
     queries: list[str] = field(default_factory=list)
     date: str | None = None
+    caption: str = ""  # подпись поста в канале без ручных описаний
 
 
 # Порядок = приоритет при дедупликации: первый источник побеждает (у justatom есть запросы).
@@ -55,6 +56,20 @@ SOURCES = {
     "soulqrat": "SoulQrat__russian_memes",
     "tg_text_meme": "tg_text_meme",
 }
+
+# Публичные мем-каналы без ручных описаний: текст для поиска даёт VLM.
+# Новые каналы — только в конец списка, иначе съедут id уже собранных мемов.
+TG_CHANNELS = [
+    "memepedia_Ru",       # разборы трендов (в т.ч. TikTok) с объяснением мема
+    "memachh",            # мемы в двач-формате, 15–20 в день
+    "memdoze",            # поток свежих мемов-картинок
+    "thedankestmemes",
+    "ebanutie_otkritki",  # постироничные открытки
+    "holy_meoww",         # животные с авторскими подписями
+    "memyprokotow",       # коты, без мата
+]
+CAPTION_ONLY = {f"tg_{c}" for c in TG_CHANNELS}
+EMPTY_TEXT_PHASH_MAX_DIST = 2  # без описаний сравнивать нечего — склеиваем только почти идентичные картинки
 
 
 # Источники, где source_id — это id поста в @text_meme (по нему оцениваем дату).
@@ -92,6 +107,16 @@ def load_raw(raw_dir: Path) -> tuple[list[Raw], int]:
             if path.exists():
                 items.append(Raw("tg_text_meme", int(row["id"]), path.read_bytes(), row["text"], date=row["date"]))
 
+    for channel in TG_CHANNELS:
+        ch = raw_dir / f"tg_{channel}"
+        if not (ch / "posts.jsonl").exists():
+            continue
+        for row in pd.read_json(ch / "posts.jsonl", lines=True).fillna("").sort_values("id").to_dict("records"):
+            path = ch / "images" / f"{row['id']}.jpg"
+            if path.exists():
+                items.append(Raw(f"tg_{channel}", int(row["id"]), path.read_bytes(), "",
+                                 date=row["date"] or None, caption=str(row["text"]).strip()))
+
     return items, skipped_multi
 
 
@@ -116,6 +141,8 @@ def find_duplicates(hashes: np.ndarray, descriptions: list[str]) -> np.ndarray:
 
     Похожего pHash мало: один шаблон с разными подписями даёт близкие хеши,
     но это разные мемы. Поэтому дубликат = близкий хеш И совпадающее описание.
+    Если у одного из пары описания нет (мем из канала без описаний), сверить тексты
+    нельзя — тогда склеиваем только почти идентичные картинки (репосты).
     """
     canonical = np.arange(len(hashes))
     for start in range(0, len(hashes), 1024):
@@ -124,7 +151,11 @@ def find_duplicates(hashes: np.ndarray, descriptions: list[str]) -> np.ndarray:
         for i, row in enumerate(dist):
             j = start + i
             for k in np.flatnonzero(row[:j] <= PHASH_MAX_DIST):
-                if same_text(descriptions[k], descriptions[j]):
+                if not descriptions[k] or not descriptions[j]:
+                    is_dup = row[k] <= EMPTY_TEXT_PHASH_MAX_DIST
+                else:
+                    is_dup = same_text(descriptions[k], descriptions[j])
+                if is_dup:
                     canonical[j] = canonical[k]
                     break
     return canonical
@@ -175,7 +206,7 @@ def main() -> None:
     kept: list[tuple[Raw, Image.Image]] = []
     bad = 0
     for raw in tqdm(raws, desc="decode"):
-        if not raw.description or not raw.description.strip():
+        if raw.source not in CAPTION_ONLY and not (raw.description or "").strip():
             bad += 1
             continue
         img = decode(raw)
@@ -215,6 +246,7 @@ def main() -> None:
                 "height": img.height,
                 "phash": f"{hashes[head]:016x}",
                 "description": raw.description.strip(),
+                "caption": raw.caption,
                 "alt_descriptions": alt,
                 "synthetic_queries": list(dict.fromkeys(queries)),
                 "source": raw.source,
