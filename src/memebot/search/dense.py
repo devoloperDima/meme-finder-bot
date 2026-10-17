@@ -1,5 +1,6 @@
 import hashlib
 import json
+import os
 from pathlib import Path
 
 import numpy as np
@@ -61,15 +62,21 @@ class DenseRetriever:
         path = self._cache_path()
         cache: dict[str, np.ndarray] = {}
         if path.exists():
-            data = np.load(path)
-            cache = dict(zip(data["keys"], data["vectors"]))
+            try:
+                data = np.load(path)
+                cache = dict(zip(data["keys"], data["vectors"]))
+            except (OSError, ValueError, KeyError):  # недописанный файл — пересчитаем
+                cache = {}
         text_by_key = dict(zip(keys, docs))
         todo = [k for k in text_by_key if k not in cache]
         if todo:
             vectors = self.encode([text_by_key[k] for k in todo], self.d_prefix, show_progress=True)
             cache.update(zip(todo, vectors))
             path.parent.mkdir(parents=True, exist_ok=True)
-            np.savez(path, keys=np.array(list(cache)), vectors=np.stack(list(cache.values())))
+            # Кэш общий для бота и оценки: пишем во временный файл и атомарно подменяем.
+            tmp = path.with_name(f"{path.stem}.{os.getpid()}.tmp.npz")
+            np.savez(tmp, keys=np.array(list(cache)), vectors=np.stack(list(cache.values())))
+            os.replace(tmp, path)
         self.doc_emb = np.stack([cache[k] for k in keys])
 
     def search(self, queries: list[str], k: int = 100) -> list[list[tuple[str, float]]]:
