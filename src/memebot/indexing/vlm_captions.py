@@ -74,6 +74,11 @@ def main() -> None:
                 except json.JSONDecodeError:  # строка, оборванная выключением машины
                     continue
     todo = memes[~memes["meme_id"].isin(done)]
+    # Сначала мемы без ручного описания (без VLM их не найти), среди них — самые свежие.
+    no_desc = todo["description"].fillna("").str.strip().eq("")
+    date = todo["date"] if "date" in todo else pd.Series("", index=todo.index)
+    todo = todo.assign(_no_desc=no_desc, _date=date.fillna("")).sort_values(
+        ["_no_desc", "_date"], ascending=[False, False], kind="stable")
     if args.limit:
         todo = todo.head(args.limit)
     print(f"Готово ранее: {len(done)}, в очереди: {len(todo)}")
