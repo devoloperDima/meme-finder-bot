@@ -18,9 +18,16 @@ class Retriever(Protocol):
         ...
 
 
-def load_memes() -> pd.DataFrame:
-    """memes.parquet + поля VLM (если прогон уже есть) в одной таблице."""
+# Корпус для оценки зафиксирован: исходные 6 222 мема из HF-датасетов. Свежие мемы (скрейпинг,
+# новые датасеты) ищет бот, но в метрики они не входят — иначе цифры разных дней несравнимы.
+EVAL_SOURCES = {"justatom", "yaneivan", "foldl"}
+
+
+def load_memes(scope: str = "all") -> pd.DataFrame:
+    """memes.parquet + поля VLM (если прогон уже есть). scope="eval" — только зафиксированный корпус оценки."""
     memes = pd.read_parquet(settings.processed_dir / "memes.parquet")
+    if scope == "eval":
+        memes = memes[memes["source"].isin(EVAL_SOURCES)].reset_index(drop=True)
     path = settings.processed_dir / "vlm_captions.jsonl"
     if path.exists():
         rows = []

@@ -56,7 +56,7 @@ def main() -> None:
     args = parser.parse_args()
     keep_awake()
 
-    memes = load_memes()
+    memes = load_memes("eval")
     if args.field != "human":
         memes = memes[memes["vlm_description"].notna()]
         print(f"Мемов с VLM-полями: {len(memes)}")

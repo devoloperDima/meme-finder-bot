@@ -83,7 +83,7 @@ def main() -> None:
     out_dir = MODELS_DIR / name
     q_prefix, d_prefix = prefixes_for(args.base)
 
-    memes = add_split(load_memes())
+    memes = add_split(load_memes("eval"))
     if "vlm" in args.queries or args.field != "human":
         memes = memes[memes["vlm_description"].notna()]
     doc_ids, docs = build_docs(memes, args.field)

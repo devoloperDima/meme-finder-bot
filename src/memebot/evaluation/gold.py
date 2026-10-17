@@ -59,7 +59,7 @@ def gold_qrels() -> tuple[list[str], dict[str, dict[str, int]], list[str]]:
 def build_pool(systems: list[str], depth: int, field: str, device: str | None) -> None:
     from memebot.evaluation.run_baselines import make_retriever
 
-    memes = load_memes()
+    memes = load_memes("eval")
     if field != "human":
         memes = memes[memes["vlm_description"].notna()]
     doc_ids, docs = build_docs(memes, field)
@@ -129,7 +129,7 @@ def serve(host: str, port: int) -> None:
     from fastapi import FastAPI, Form
     from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 
-    memes = load_memes().set_index("meme_id")
+    memes = load_memes("eval").set_index("meme_id")
     queries = load_queries()
     order = [q["qid"] for q in queries]
     by_qid = {q["qid"]: q for q in queries}
