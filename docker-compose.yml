@@ -1,0 +1,25 @@
+# Деплой на VPS без GPU:  docker compose up -d --build
+# Перед этим скопируйте на сервер data/processed, data/runs/emb (кэш векторов) и .env.
+services:
+  bot:
+    build: .
+    command: python -m memebot.bot.main
+    env_file: .env
+    volumes:
+      - ./data:/app/data
+      - hf-cache:/hf-cache
+    restart: unless-stopped
+
+  api:
+    build: .
+    command: uvicorn memebot.api.main:app --host 0.0.0.0 --port 8000
+    env_file: .env
+    ports:
+      - "127.0.0.1:8000:8000"  # наружу — только через reverse proxy
+    volumes:
+      - ./data:/app/data  # rw: при новых мемах дописывается кэш векторов
+      - hf-cache:/hf-cache
+    restart: unless-stopped
+
+volumes:
+  hf-cache:

@@ -1,0 +1,18 @@
+# Зависимости только для сервинга (бот + API) на сервере без GPU.
+# Тяжёлое (VLM, дообучение, эмбеддинги корпуса) считается офлайн на машине с GPU,
+# на сервер едут data/processed, data/runs/emb и, при необходимости, models/.
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch==2.11.0+cpu
+sentence-transformers
+transformers
+numpy==2.2.6
+pandas
+pyarrow==19.0.1
+rank-bm25
+snowballstemmer
+pydantic-settings
+aiogram>=3
+fastapi
+uvicorn[standard]
+python-multipart
+pillow
