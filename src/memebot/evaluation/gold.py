@@ -21,7 +21,8 @@ from memebot.search.hybrid import rrf
 EVAL_DIR = settings.eval_dir
 QUERIES = EVAL_DIR / "gold_queries.jsonl"
 POOL = EVAL_DIR / "gold_pool.json"
-LABELS = EVAL_DIR / "gold_labels.jsonl"
+LABELS = EVAL_DIR / "gold_labels.jsonl"  # ручная разметка
+JUDGE = EVAL_DIR / "gold_judge.jsonl"  # оценки LLM-судьи (memebot.evaluation.llm_judge)
 
 
 def read_jsonl(path) -> list[dict]:
@@ -35,17 +36,17 @@ def load_queries() -> list[dict]:
     return read_jsonl(QUERIES)
 
 
-def load_labels() -> dict[str, dict[str, int]]:
+def load_labels(path=LABELS) -> dict[str, dict[str, int]]:
     """{qid: {meme_id: grade}}; при повторной разметке побеждает последняя запись."""
     labels: dict[str, dict[str, int]] = {}
-    for r in read_jsonl(LABELS):
+    for r in read_jsonl(path):
         labels.setdefault(r["qid"], {})[r["meme_id"]] = r["grade"]
     return labels
 
 
-def gold_qrels() -> tuple[list[str], dict[str, dict[str, int]], list[str]]:
+def gold_qrels(path=LABELS) -> tuple[list[str], dict[str, dict[str, int]], list[str]]:
     """(тексты, qrels по индексу запроса, qid) — только размеченные запросы с ≥1 релевантным мемом."""
-    labels = load_labels()
+    labels = load_labels(path)
     texts, qrels, qids = [], {}, []
     for q in load_queries():
         rel = {m: g for m, g in labels.get(q["qid"], {}).items() if g > 0}

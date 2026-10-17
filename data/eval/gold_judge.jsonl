@@ -1,0 +1,5 @@
+{"qid": "g001", "meme_id": "m01970", "grade": 2, "reason": "Мем ровно про контрольную, которую препод назвал лёгкой, но она оказалась сложной.", "model": "hf.co/Qwen/Qwen3-VL-8B-Instruct-GGUF:Q4_K_M", "seconds": 8.9}
+{"qid": "g001", "meme_id": "m03715", "grade": 2, "reason": "Мем ровно описывает ожидание легкости и реальность сложности.", "model": "hf.co/Qwen/Qwen3-VL-8B-Instruct-GGUF:Q4_K_M", "seconds": 7.91}
+{"qid": "g001", "meme_id": "m04624", "grade": 2, "reason": "Мем ровно про ситуацию с лёгким тестом.", "model": "hf.co/Qwen/Qwen3-VL-8B-Instruct-GGUF:Q4_K_M", "seconds": 8.68}
+{"qid": "g001", "meme_id": "m00679", "grade": 1, "reason": "Ситуация с контрольной и прогнозом погоды — похожи по схеме.", "model": "hf.co/Qwen/Qwen3-VL-8B-Instruct-GGUF:Q4_K_M", "seconds": 7.87}
+{"qid": "g001", "meme_id": "m04761", "grade": 1, "reason": "Мем про одинаковые ответы и препода — уместен, но не ровно про лёгкую контрольную.", "model": "hf.co/Qwen/Qwen3-VL-8B-Instruct-GGUF:Q4_K_M", "seconds": 10.5}

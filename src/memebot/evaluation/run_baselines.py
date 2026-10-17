@@ -18,7 +18,7 @@ from pathlib import Path
 
 from memebot.config import settings
 from memebot.evaluation.datasets import silver_queries
-from memebot.evaluation.gold import gold_qrels
+from memebot.evaluation.gold import JUDGE, gold_qrels
 from memebot.evaluation.metrics import score
 from memebot.search.base import build_docs, load_memes
 from memebot.search.hybrid import rrf
@@ -52,7 +52,7 @@ def main() -> None:
     parser.add_argument("--fuse", nargs="*", default=[], help="имена уже посчитанных ранжирований для RRF")
     parser.add_argument("--field", default="human", choices=["human", "vlm", "human+vlm"])
     parser.add_argument("--device", default=None)
-    parser.add_argument("--set", dest="eval_set", default="silver", choices=["silver", "gold"])
+    parser.add_argument("--set", dest="eval_set", default="silver", choices=["silver", "gold", "gold-judge"])
     args = parser.parse_args()
     keep_awake()
 
@@ -63,6 +63,8 @@ def main() -> None:
     doc_ids, docs = build_docs(memes, args.field)
     if args.eval_set == "gold":
         queries, qrels, _ = gold_qrels()
+    elif args.eval_set == "gold-judge":
+        queries, qrels, _ = gold_qrels(JUDGE)
     else:
         queries, qrels = silver_queries(memes)
     print(f"Документов: {len(docs)}, запросов: {len(queries)}")

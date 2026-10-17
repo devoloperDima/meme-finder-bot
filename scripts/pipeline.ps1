@@ -46,6 +46,27 @@ RestartBot
 Log "жду освобождения GPU (VLM старых мемов и обучение)"
 WaitFor '*memebot.indexing.vlm_captions*'
 WaitFor '*night_run.ps1*'
+
+function Py([string]$title, [string[]]$pyArgs) {
+    Log $title
+    & $py @pyArgs 2>&1 | Where-Object { $_ -notmatch 'it/s\]|s/it\]|^Batches' } | Add-Content $log
+    Log "$title`: exit $LASTEXITCODE"
+}
+
+# Gold через LLM-судью. Сначала пул дополняется топом дообученных моделей (TREC-пулинг):
+# иначе мемы, найденные только ими, остались бы неоценёнными и засчитывались как промахи.
+$tuned = @(Get-ChildItem models -Directory | Where-Object { $_.Name -ne "checkpoints" } | ForEach-Object { "models/$($_.Name)" })
+if ($tuned.Count) { Py "пул gold + дообученные" (@("-m", "memebot.evaluation.gold", "pool", "--depth", "10", "--systems") + $tuned) }
+Py "LLM-судья" @("-m", "memebot.evaluation.llm_judge", "run")
+Py "gold-judge: бейзлайны" @("-m", "memebot.evaluation.run_baselines", "--set", "gold-judge", "--retrievers",
+    "bm25", "intfloat/multilingual-e5-base", "deepvk/USER-bge-m3")
+Py "gold-judge: RRF" @("-m", "memebot.evaluation.run_baselines", "--set", "gold-judge", "--fuse", "bm25", "USER-bge-m3")
+foreach ($m in $tuned) {
+    $name = Split-Path $m -Leaf
+    Py "gold-judge: $name" @("-m", "memebot.evaluation.run_baselines", "--set", "gold-judge", "--retrievers", $m)
+    Py "gold-judge: RRF $name" @("-m", "memebot.evaluation.run_baselines", "--set", "gold-judge", "--fuse", "bm25", $name)
+}
+
 Log "VLM для новых мемов"
 & $py -m memebot.indexing.vlm_captions 2>&1 | Where-Object { $_ -notmatch 'it/s\]|s/it\]' } | Add-Content $log
 Log "VLM: exit $LASTEXITCODE"
