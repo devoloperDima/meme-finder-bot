@@ -26,6 +26,7 @@ CREATE TABLE IF NOT EXISTS photo_cache (meme_id TEXT PRIMARY KEY, file_id TEXT);
 class Storage:
     def __init__(self, path: Path, salt: str):
         path.parent.mkdir(parents=True, exist_ok=True)
+        self.db_path = path
         self.db = sqlite3.connect(path)
         self.db.executescript(SCHEMA)
         self.salt = salt
