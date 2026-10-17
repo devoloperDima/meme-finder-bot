@@ -1,9 +1,15 @@
 """День 1: собрать единый датасет мемов из скачанных HF-датасетов.
 
-Источники (все из Telegram-канала @text_meme, где мемы вручную описывают для незрячих):
-  - justatom/meme-russian-ir  — описания + 3 синтетических запроса от GPT-4.1 на мем
-  - yaneivan/memes_caption    — описания
-  - foldl/rumeme-desc         — описания
+Источники:
+  - justatom/meme-russian-ir  — @text_meme до 03.2025: описания + 3 синтетических запроса GPT-4.1
+  - yaneivan/memes_caption    — @text_meme, описания
+  - foldl/rumeme-desc         — @text_meme, описания
+  - SoulQrat/russian_memes    — OCR + описание сцены (2026)
+  - tg_text_meme              — свежие посты @text_meme с 03.2025 (memebot.data.scrape_telegram)
+@text_meme — канал, где волонтёры вручную описывают мемы для незрячих.
+
+Новые источники добавляются в конец списка: так id уже существующих мемов не меняются
+(на них завязаны описания VLM, пул разметки и кэш эмбеддингов) — это проверяется при сборке.
 
 Шаги: декодируем картинки → отбрасываем битые/мелкие/многокартиночные →
 дедуплицируем по перцептивному хешу → сохраняем JPEG и memes.parquet.
@@ -38,6 +44,7 @@ class Raw:
     image: bytes
     description: str
     queries: list[str] = field(default_factory=list)
+    date: str | None = None
 
 
 # Порядок = приоритет при дедупликации: первый источник побеждает (у justatom есть запросы).
@@ -45,7 +52,13 @@ SOURCES = {
     "justatom": "justatom__meme-russian-ir",
     "yaneivan": "yaneivan__memes_caption",
     "foldl": "foldl__rumeme-desc",
+    "soulqrat": "SoulQrat__russian_memes",
+    "tg_text_meme": "tg_text_meme",
 }
+
+
+# Источники, где source_id — это id поста в @text_meme (по нему оцениваем дату).
+TEXT_MEME_IDS = {"justatom", "yaneivan"}
 
 
 def load_raw(raw_dir: Path) -> tuple[list[Raw], int]:
@@ -64,6 +77,21 @@ def load_raw(raw_dir: Path) -> tuple[list[Raw], int]:
     for i, row in enumerate(pq.read_table(next((raw_dir / SOURCES["foldl"]).rglob("*.parquet"))).to_pylist()):
         items.append(Raw("foldl", i, row["image"]["bytes"], row["text"]))
 
+    soul = raw_dir / SOURCES["soulqrat"]
+    if soul.exists():
+        for row in pd.read_csv(soul / "dataset_extended.csv").fillna("").to_dict("records"):
+            path = soul / "images" / row["filename"]
+            if path.exists():
+                desc = f"Текст на картинке: «{row['ocr'].strip()}». {row['scene_description'].strip()}"
+                items.append(Raw("soulqrat", int(Path(row["filename"]).stem.split("_")[-1]), path.read_bytes(), desc))
+
+    tg = raw_dir / SOURCES["tg_text_meme"]
+    if (tg / "posts.jsonl").exists():
+        for row in pd.read_json(tg / "posts.jsonl", lines=True).sort_values("id").to_dict("records"):
+            path = tg / "images" / f"{row['id']}.jpg"
+            if path.exists():
+                items.append(Raw("tg_text_meme", int(row["id"]), path.read_bytes(), row["text"], date=row["date"]))
+
     return items, skipped_multi
 
 
@@ -71,7 +99,7 @@ def decode(raw: Raw) -> Image.Image | None:
     try:
         img = Image.open(io.BytesIO(raw.image))
         img.load()
-    except Exception:
+    except (OSError, ValueError, Image.DecompressionBombError):  # битый или не-картинка
         return None
     if min(img.size) < MIN_SIDE:
         return None
@@ -102,6 +130,40 @@ def find_duplicates(hashes: np.ndarray, descriptions: list[str]) -> np.ndarray:
     return canonical
 
 
+def date_estimator(raw_dir: Path):
+    """id поста @text_meme → дата: интерполяция по опорным постам с известной датой.
+
+    У мемов из HF-датасетов даты нет, но id постов в канале растут со временем.
+    """
+    anchors = {}
+    tg = raw_dir / SOURCES["tg_text_meme"]
+    if (tg / "date_anchors.json").exists():
+        anchors.update({int(k): v for k, v in pd.read_json(tg / "date_anchors.json", typ="series").items()})
+    if (tg / "posts.jsonl").exists():
+        posts = pd.read_json(tg / "posts.jsonl", lines=True)
+        anchors.update(dict(zip(posts["id"], posts["date"])))
+    if not anchors:
+        return lambda post_id: None
+    ids = np.array(sorted(anchors))
+    ts = pd.to_datetime([anchors[i] for i in ids], utc=True).as_unit("s").astype("int64").to_numpy()
+
+    def estimate(post_id: int) -> str:
+        return pd.Timestamp(int(np.interp(post_id, ids, ts)), unit="s", tz="UTC").isoformat()
+
+    return estimate
+
+
+def check_ids_stable(old_path: Path, new_phashes: list[str]) -> None:
+    """Мемы из прошлой сборки должны сохранить свои id: m00042 — та же картинка, что и раньше."""
+    if not old_path.exists():
+        return
+    old = pd.read_parquet(old_path, columns=["meme_id", "phash"])
+    changed = [m for i, (m, h) in enumerate(zip(old["meme_id"], old["phash"])) if i >= len(new_phashes) or new_phashes[i] != h]
+    if changed:
+        raise SystemExit(f"Сборка меняет id у {len(changed)} существующих мемов (например {changed[:5]}) — остановлено")
+    print(f"id {len(old)} существующих мемов сохранены, новых: {len(new_phashes) - len(old)}")
+
+
 def main() -> None:
     out_dir = settings.processed_dir
     img_dir = out_dir / "images"
@@ -130,8 +192,12 @@ def main() -> None:
     for i, c in enumerate(canonical):
         groups.setdefault(int(c), []).append(i)
 
+    ordered = sorted(groups.items())
+    check_ids_stable(out_dir / "memes.parquet", [f"{hashes[head]:016x}" for head, _ in ordered])
+
+    estimate_date = date_estimator(settings.raw_dir)
     records = []
-    for n, (head, members) in enumerate(tqdm(sorted(groups.items()), desc="save")):
+    for n, (head, members) in enumerate(tqdm(ordered, desc="save")):
         raw, img = kept[head]
         meme_id = f"m{n:05d}"
         if max(img.size) > MAX_SIDE:
@@ -153,6 +219,8 @@ def main() -> None:
                 "synthetic_queries": list(dict.fromkeys(queries)),
                 "source": raw.source,
                 "source_id": raw.source_id,
+                "date": raw.date or (estimate_date(raw.source_id) if raw.source in TEXT_MEME_IDS else None),
+                "date_estimated": raw.date is None and raw.source in TEXT_MEME_IDS,
                 "duplicates": [f"{kept[m][0].source}:{kept[m][0].source_id}" for m in members[1:]],
             }
         )

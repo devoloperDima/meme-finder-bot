@@ -11,7 +11,7 @@ import hashlib
 import logging
 
 from aiogram import Bot, Dispatcher, F
-from aiogram.filters import CommandStart
+from aiogram.filters import Command, CommandObject, CommandStart
 from aiogram.types import CallbackQuery, FSInputFile, InlineKeyboardButton, InlineKeyboardMarkup, Message
 
 from memebot.bot.storage import Storage
@@ -20,14 +20,17 @@ from memebot.search.service import MemeSearcher
 from memebot.utils import keep_awake
 
 MAX_RESULTS = 10
+FRESH_WEIGHT = 1.0  # /new: свежесть почти наравне с релевантностью
 ACTIONS = {"like", "dislike", "next"}
 GREETING = (
     "Привет! Опиши ситуацию — пришлю подходящий мем.\n\n"
     "Например: «когда препод говорит, что контрольная будет лёгкой» или «понедельник, снова на работу».\n\n"
-    "Под мемом кнопки: 👍 зашёл, 👎 мимо, 🔄 другой. Оценки помогают боту стать смешнее."
+    "Под мемом кнопки: 👍 зашёл, 👎 мимо, 🔄 другой. Оценки помогают боту стать смешнее.\n\n"
+    "/new <ситуация> — то же, но из самых свежих мемов."
 )
 
 dp = Dispatcher()
+log = logging.getLogger("memebot.bot")
 searcher: MemeSearcher
 storage: Storage
 
@@ -58,13 +61,25 @@ async def start(message: Message) -> None:
     await message.answer(GREETING)
 
 
-@dp.message(F.text)
-async def on_text(message: Message) -> None:
-    query = message.text.strip()[:300]
-    hits, timings = await asyncio.to_thread(searcher.search, query, MAX_RESULTS)
-    search_id = storage.log_search(message.from_user.id, query, [h.meme_id for h in hits], timings)
-    logging.info("search %d %.0f ms", search_id, sum(timings.values()))
+async def run_search(message: Message, query: str, recency_weight: float | None = None, tag: str = "") -> None:
+    query = query.strip()[:300]
+    hits, timings = await asyncio.to_thread(searcher.search, query, MAX_RESULTS, recency_weight)
+    search_id = storage.log_search(message.from_user.id, tag + query, [h.meme_id for h in hits], timings)
+    log.info("search %d %.0f ms", search_id, sum(timings.values()))
     await send_meme(message, message.from_user.id, search_id, 0)
+
+
+@dp.message(Command("new"))
+async def on_new(message: Message, command: CommandObject) -> None:
+    if not command.args:
+        await message.answer("Напиши ситуацию после команды, например: /new понедельник снова на работу")
+        return
+    await run_search(message, command.args, FRESH_WEIGHT, tag="/new ")
+
+
+@dp.message(F.text & ~F.text.startswith("/"))
+async def on_text(message: Message) -> None:
+    await run_search(message, message.text)
 
 
 @dp.callback_query(F.data.startswith("fb:"))
@@ -95,10 +110,10 @@ async def main() -> None:
         raise SystemExit("TELEGRAM_BOT_TOKEN не задан: впишите токен от @BotFather в .env")
     salt = settings.bot_user_salt or hashlib.sha256(settings.telegram_bot_token.encode()).hexdigest()
     storage = Storage(settings.bot_db_path, salt)
-    logging.info("Загружаю поиск (%s)...", settings.search_model)
+    log.info("Загружаю поиск (%s)...", settings.search_model)
     searcher = MemeSearcher(settings.search_model, device=settings.search_device)
     bot = Bot(settings.telegram_bot_token)
-    logging.info("Бот запущен")
+    log.info("Бот запущен")
     await dp.start_polling(bot)
 
 
