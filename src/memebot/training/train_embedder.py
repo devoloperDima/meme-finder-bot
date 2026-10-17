@@ -33,6 +33,7 @@ from sentence_transformers.util import mine_hard_negatives
 from memebot.evaluation.datasets import add_split
 from memebot.search.base import build_docs, load_memes
 from memebot.search.dense import prefixes_for
+from memebot.utils import keep_awake
 
 MODELS_DIR = Path("models")
 
@@ -74,6 +75,7 @@ def main() -> None:
     p.add_argument("--device", default="cuda")
     p.add_argument("--limit", type=int, default=None, help="взять только N пар — для быстрой проверки")
     args = p.parse_args()
+    keep_awake()
 
     random.seed(args.seed)
     torch.manual_seed(args.seed)

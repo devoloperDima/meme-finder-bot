@@ -21,6 +21,7 @@ from PIL import Image
 from tqdm import tqdm
 
 from memebot.config import settings
+from memebot.utils import keep_awake
 
 DEFAULT_MODEL = "hf.co/Qwen/Qwen3-VL-8B-Instruct-GGUF:Q4_K_M"
 
@@ -59,6 +60,7 @@ def main() -> None:
     parser.add_argument("--max-side", type=int, default=768)
     parser.add_argument("--out", default="vlm_captions.jsonl")
     args = parser.parse_args()
+    keep_awake()
 
     memes = pd.read_parquet(settings.processed_dir / "memes.parquet")
     out_path = settings.processed_dir / args.out
@@ -66,7 +68,11 @@ def main() -> None:
     done = set()
     if out_path.exists():
         with out_path.open(encoding="utf-8") as f:
-            done = {json.loads(line)["meme_id"] for line in f}
+            for line in f:
+                try:
+                    done.add(json.loads(line)["meme_id"])
+                except json.JSONDecodeError:  # строка, оборванная выключением машины
+                    continue
     todo = memes[~memes["meme_id"].isin(done)]
     if args.limit:
         todo = todo.head(args.limit)

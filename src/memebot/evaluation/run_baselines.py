@@ -22,6 +22,7 @@ from memebot.evaluation.gold import gold_qrels
 from memebot.evaluation.metrics import score
 from memebot.search.base import build_docs, load_memes
 from memebot.search.hybrid import rrf
+from memebot.utils import keep_awake
 
 RUNS_DIR = settings.data_dir / "runs"
 RESULTS_DIR = Path("results")
@@ -53,6 +54,7 @@ def main() -> None:
     parser.add_argument("--device", default=None)
     parser.add_argument("--set", dest="eval_set", default="silver", choices=["silver", "gold"])
     args = parser.parse_args()
+    keep_awake()
 
     memes = load_memes()
     if args.field != "human":

@@ -4,3 +4,4 @@
 {"system": "USER-bge-m3", "field": "human", "recall@1": 0.7218, "recall@5": 0.8546, "recall@10": 0.8961, "mrr@10": 0.7786, "ndcg@10": 0.8068, "index_s": 1383.6, "ms_per_query": 33.96, "device": "cpu"}
 {"system": "rrf(bm25 + USER-bge-m3)", "field": "human", "recall@1": 0.758, "recall@5": 0.8866, "recall@10": 0.9234, "mrr@10": 0.8148, "ndcg@10": 0.8411}
 {"system": "rrf(bm25 + multilingual-e5-base + USER-bge-m3)", "field": "human", "recall@1": 0.7706, "recall@5": 0.9066, "recall@10": 0.9412, "mrr@10": 0.8294, "ndcg@10": 0.8566}
+{"system": "USER-bge-m3", "field": "human", "recall@1": 0.7213, "recall@5": 0.8535, "recall@10": 0.8961, "mrr@10": 0.7784, "ndcg@10": 0.8067, "index_s": 19.4, "ms_per_query": 0.8, "device": "cuda"}

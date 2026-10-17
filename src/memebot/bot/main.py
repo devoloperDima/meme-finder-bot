@@ -17,6 +17,7 @@ from aiogram.types import CallbackQuery, FSInputFile, InlineKeyboardButton, Inli
 from memebot.bot.storage import Storage
 from memebot.config import settings
 from memebot.search.service import MemeSearcher
+from memebot.utils import keep_awake
 
 MAX_RESULTS = 10
 ACTIONS = {"like", "dislike", "next"}
@@ -88,6 +89,7 @@ async def on_feedback(callback: CallbackQuery) -> None:
 
 async def main() -> None:
     global searcher, storage
+    keep_awake()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     if not settings.telegram_bot_token:
         raise SystemExit("TELEGRAM_BOT_TOKEN не задан: впишите токен от @BotFather в .env")
