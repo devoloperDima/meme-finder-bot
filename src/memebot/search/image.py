@@ -61,8 +61,8 @@ class ImageRetriever:
         cache: dict[str, np.ndarray] = {}
         if path.exists():
             try:
-                data = np.load(path)
-                cache = dict(zip(data["keys"], data["vectors"]))
+                with np.load(path) as data:  # закрываем файл: открытый .npz на Windows не даёт os.replace
+                    cache = dict(zip(data["keys"], data["vectors"]))
             except (OSError, ValueError, KeyError):
                 cache = {}
         todo = [m for m in doc_ids if m not in cache]

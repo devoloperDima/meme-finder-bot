@@ -42,6 +42,25 @@ def test_dedup_without_descriptions_needs_near_identical_image():
     assert canon[1] == 0 and canon[2] == 2
 
 
+def test_dense_cache_grows_incrementally(tmp_path, monkeypatch):
+    import memebot.search.dense as dense
+
+    monkeypatch.setattr(dense, "EMB_CACHE", tmp_path)
+    r = dense.DenseRetriever.__new__(dense.DenseRetriever)  # без загрузки настоящей модели
+    r.model_name, r.name, r.d_prefix = "fake", "fake", ""
+    encoded = []
+
+    def fake_encode(texts, prefix, show_progress=False):
+        encoded.extend(texts)
+        return np.array([[float(len(t)), 1.0] for t in texts], dtype=np.float32)
+
+    r.encode = fake_encode
+    r.fit(["a", "b"], ["кот", "собака"])
+    r.fit(["a", "b", "c"], ["кот", "собака", "попугай"])  # второй fit подменяет уже открывавшийся кэш
+    assert encoded == ["кот", "собака", "попугай"]  # старые тексты не пересчитаны
+    assert r.doc_emb.shape == (3, 2)
+
+
 @pytest.fixture
 def storage(tmp_path):
     return Storage(tmp_path / "bot.db", salt="test")
