@@ -106,6 +106,8 @@ foreach ($set in "gold-consensus", "gold-judge", "gold-gemma") {
     }
 }
 
+Py "сводка результатов" @("-m", "memebot.evaluation.report")
+
 # 5. Полный корпус: ждём сбор каналов, пересобираем, VLM для новых мемов (без описаний и свежие — первыми)
 WaitFor '*scrape_channels.ps1*'
 Py "сборка датасета" @("-m", "memebot.data.build_dataset")

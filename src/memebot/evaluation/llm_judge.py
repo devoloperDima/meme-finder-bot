@@ -12,6 +12,7 @@
 import argparse
 import json
 import time
+from pathlib import Path
 
 import httpx
 import ollama
@@ -98,6 +99,7 @@ def kappa(a: list[int], b: list[int]) -> tuple[float, float]:
 def agreement() -> None:
     sources = {"человек": load_labels(LABELS), **{name: load_labels(path) for name, (_, path) in JUDGES.items()}}
     names = [n for n, labels in sources.items() if labels]
+    lines = []
     for i, x in enumerate(names):
         for y in names[i + 1:]:
             pairs = [(g, sources[y][q][m]) for q, ms in sources[x].items() for m, g in ms.items() if m in sources[y].get(q, {})]
@@ -105,7 +107,10 @@ def agreement() -> None:
                 continue
             for scale, f in [("0/1/2", lambda g: g), ("подходит да/нет", lambda g: int(g > 0))]:
                 p_o, k = kappa([f(a) for a, _ in pairs], [f(b) for _, b in pairs])
-                print(f"{x} vs {y:8} {scale:16} пар {len(pairs):5}  совпадение {p_o:.3f}  κ {k:.3f}")
+                lines.append(f"{x} vs {y:8} {scale:16} пар {len(pairs):5}  совпадение {p_o:.3f}  κ {k:.3f}")
+    print("\n".join(lines))
+    Path("results").mkdir(exist_ok=True)
+    Path("results/judge_agreement.txt").write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
 def consensus() -> None:
