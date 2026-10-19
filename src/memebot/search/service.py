@@ -10,8 +10,10 @@ from memebot.search.base import build_docs, load_memes
 from memebot.search.bm25 import BM25Retriever
 from memebot.search.dense import DenseRetriever
 from memebot.search.hybrid import rrf
+from memebot.search.slang import expand
 
 FRESHNESS_HALF_LIFE_DAYS = 365
+CONFIDENT = 0.85  # доля от лучшего RRF-скора: ≈ мем в топ-10 и у BM25, и у плотной модели
 
 
 @dataclass
@@ -33,7 +35,7 @@ def freshness(memes: pd.DataFrame) -> dict[str, float]:
 
 class MemeSearcher:
     def __init__(self, dense_model: str = "deepvk/USER-bge-m3", field: str = "human",
-                 device: str | None = None, recency_weight: float = 0.15):
+                 device: str | None = None, recency_weight: float = 0.3):
         memes = load_memes()
         if "vlm_is_meme" in memes:  # VLM пометил рекламу / анонсы / новости без шутки — в выдачу не берём
             memes = memes[memes["vlm_is_meme"].map(lambda v: str(v).strip().lower() != "false")]
@@ -47,11 +49,23 @@ class MemeSearcher:
         self.dense.fit(doc_ids, docs)  # эмбеддинги документов берутся из кэша, если уже считались
 
     def rerank_fresh(self, fused: list[tuple[str, float]], weight: float) -> list[tuple[str, float]]:
-        """Скор RRF нормируем на лучший результат и добавляем weight × свежесть."""
+        """Свежесть поднимает мем только среди уверенно релевантных.
+
+        Скор RRF нормируем на лучший. Уверенные кандидаты (≥ CONFIDENT от лучшего — обычно их нашли
+        и BM25, и плотная модель) сортируются по релевантность + weight × свежесть; остальные идут
+        следом по одной релевантности. Раньше бонус получали все, и в /new свежий мем «ни о чём»
+        обгонял подходящий: на «сигма» Наклз и смотровая башня 2026 года были выше мема про сигму.
+        """
         if not fused or weight == 0:
             return fused
         top = fused[0][1]
-        scored = [(m, s / top + weight * self.freshness.get(m, 0.0)) for m, s in fused]
+        scored = []
+        for m, s in fused:
+            rel = s / top
+            if rel >= CONFIDENT:
+                scored.append((m, 1.0 + rel + weight * self.freshness.get(m, 0.0)))  # всегда выше неуверенных
+            else:
+                scored.append((m, rel))
         return sorted(scored, key=lambda x: -x[1])
 
     def search(self, query: str, k: int = 10, recency_weight: float | None = None) -> tuple[list[Hit], dict[str, float]]:
@@ -60,7 +74,7 @@ class MemeSearcher:
         t0 = time.perf_counter()
         bm25 = self.bm25.search([query], k=100)
         t1 = time.perf_counter()
-        dense = self.dense.search([query], k=100)
+        dense = self.dense.search([expand(query)], k=100)  # сленг → смысл: плотная модель его не знает
         t2 = time.perf_counter()
         fused = self.rerank_fresh(rrf([bm25, dense], top=50)[0], weight)[:k]
         t3 = time.perf_counter()

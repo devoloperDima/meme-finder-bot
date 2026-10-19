@@ -61,6 +61,17 @@ def test_dense_cache_grows_incrementally(tmp_path, monkeypatch):
     assert r.doc_emb.shape == (3, 2)
 
 
+def test_freshness_does_not_beat_relevance():
+    from memebot.search.service import MemeSearcher
+
+    s = MemeSearcher.__new__(MemeSearcher)  # без загрузки индекса
+    s.freshness = {"old_match": 0.05, "fresh_match": 0.95, "fresh_noise": 1.0}
+    # RRF: old_match нашли оба ретривера, fresh_noise — только один (≈ половина скора лучшего)
+    fused = [("old_match", 2 / 61), ("fresh_match", 2 / 63), ("fresh_noise", 1 / 61)]
+    order = [m for m, _ in s.rerank_fresh(fused, weight=1.0)]
+    assert order == ["fresh_match", "old_match", "fresh_noise"]  # свежесть решает только среди уверенных
+
+
 @pytest.fixture
 def storage(tmp_path):
     return Storage(tmp_path / "bot.db", salt="test")
