@@ -57,14 +57,33 @@ function UnloadOllama {
     Start-Sleep 10
 }
 
-Log "=== старт конвейера"
+function QueueSize([string]$flags) {
+    $n = cmd /c "$py -m memebot.indexing.vlm_captions --count $flags 2>nul" | Select-Object -Last 1
+    return [int]$n
+}
 
-# 1. VLM-описания исходного корпуса (нужны для обучения на «ситуациях»)
+Log "=== старт конвейера"
 WaitFor '*memebot.indexing.vlm_captions*'
+
+# 1. Сначала свежие мемы для бота. У мемов из каналов нет ручных описаний — без VLM бот их не видит.
+#    Пока идёт сбор каналов: пересборка датасета → VLM порцией (свежие первыми) → перезапуск бота.
+do {
+    $scraping = Running '*scrape_channels.ps1*'
+    Py "сборка датасета" @("-m", "memebot.data.build_dataset")
+    $left = QueueSize "--only-undescribed"
+    if ($left -gt 0) {
+        PyRetry "VLM: мемы без описаний, осталось $left" @("-m", "memebot.indexing.vlm_captions", "--only-undescribed", "--limit", "300")
+        RestartBot
+    } elseif ($scraping) {
+        Start-Sleep 600
+    }
+} while ($scraping -or $left -gt 0)
+
+# 2. VLM-описания исходного корпуса (нужны для обучения на «ситуациях»)
 PyRetry "VLM: исходный корпус" @("-m", "memebot.indexing.vlm_captions", "--scope", "eval")
 UnloadOllama
 
-# 2. Бейзлайны на текстах VLM (silver)
+# 3. Бейзлайны на текстах VLM (silver)
 foreach ($field in "vlm", "human+vlm") {
     Py "silver baselines $field" @("-m", "memebot.evaluation.run_baselines", "--retrievers", "bm25", "deepvk/USER-bge-m3", "--field", $field)
     Py "silver rrf $field" @("-m", "memebot.evaluation.run_baselines", "--fuse", "bm25", "USER-bge-m3", "--field", $field)
@@ -72,7 +91,7 @@ foreach ($field in "vlm", "human+vlm") {
 Py "silver SigLIP2" @("-m", "memebot.evaluation.run_baselines", "--retrievers", "google/siglip2-base-patch16-256")
 Py "silver rrf text+image" @("-m", "memebot.evaluation.run_baselines", "--fuse", "bm25", "USER-bge-m3", "siglip2-base-patch16-256")
 
-# 3. Дообучение: абляция данных и hard negatives (готовые модели пропускаем)
+# 4. Дообучение: абляция данных и hard negatives (готовые модели пропускаем)
 $runs = @(
     @{ name = "USER-bge-m3-synthetic-hn0"; args = @("--queries", "synthetic", "--hard-negatives", "0") },
     @{ name = "USER-bge-m3-synthetic-vlm-hn0"; args = @("--queries", "synthetic", "vlm", "--hard-negatives", "0") },
@@ -88,7 +107,7 @@ foreach ($m in $tuned) {
     Py "silver rrf $($m.Name)" @("-m", "memebot.evaluation.run_baselines", "--fuse", "bm25", $m.Name)
 }
 
-# 4. Gold без человека: пул (TREC) с дообученными моделями, два независимых судьи, консенсус
+# 5. Gold без человека: пул (TREC) с дообученными моделями, два независимых судьи, консенсус
 $systems = @("bm25", "intfloat/multilingual-e5-base", "deepvk/USER-bge-m3", "google/siglip2-base-patch16-256") + @($tuned | ForEach-Object { "models/$($_.Name)" })
 Py "пул gold" (@("-m", "memebot.evaluation.gold", "pool", "--depth", "10", "--systems") + $systems)
 PyRetry "судья qwen" @("-m", "memebot.evaluation.llm_judge", "run", "--judge", "qwen")
@@ -108,11 +127,8 @@ foreach ($set in "gold-consensus", "gold-judge", "gold-gemma") {
 
 Py "сводка результатов" @("-m", "memebot.evaluation.report")
 
-# 5. Полный корпус: ждём сбор каналов, пересобираем, VLM для новых мемов (без описаний и свежие — первыми)
-WaitFor '*scrape_channels.ps1*'
-Py "сборка датасета" @("-m", "memebot.data.build_dataset")
-RestartBot
-PyRetry "VLM: новые мемы" @("-m", "memebot.indexing.vlm_captions")
+# 6. Остальное: «ситуации» от VLM для мемов, у которых уже есть ручные описания (свежие @text_meme, SoulQrat)
+PyRetry "VLM: остальные мемы" @("-m", "memebot.indexing.vlm_captions")
 UnloadOllama
 RestartBot
 Log "=== ГОТОВО"

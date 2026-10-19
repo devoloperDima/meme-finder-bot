@@ -64,8 +64,12 @@ def main() -> None:
     parser.add_argument("--out", default="vlm_captions.jsonl")
     parser.add_argument("--scope", default="all", choices=["all", "eval"],
                         help="eval — только зафиксированный корпус оценки (нужен для обучения раньше остального)")
+    parser.add_argument("--only-undescribed", action="store_true",
+                        help="только мемы без ручного описания: без VLM бот их не находит")
+    parser.add_argument("--count", action="store_true", help="напечатать размер очереди и выйти")
     args = parser.parse_args()
-    keep_awake()
+    if not args.count:
+        keep_awake()
 
     memes = pd.read_parquet(settings.processed_dir / "memes.parquet")
     if args.scope == "eval":
@@ -81,11 +85,18 @@ def main() -> None:
                 except json.JSONDecodeError:  # строка, оборванная выключением машины
                     continue
     todo = memes[~memes["meme_id"].isin(done)]
-    # Сначала мемы без ручного описания (без VLM их не найти), среди них — самые свежие.
+    # Порядок: мемы без ручного описания (без VLM бот их не находит) → корпус оценки (нужен
+    # для обучения) → остальные; внутри каждой группы — самые свежие первыми.
     no_desc = todo["description"].fillna("").str.strip().eq("")
+    priority = (~no_desc).astype(int) + (~todo["source"].isin(EVAL_SOURCES) & ~no_desc).astype(int)
     date = todo["date"] if "date" in todo else pd.Series("", index=todo.index)
-    todo = todo.assign(_no_desc=no_desc, _date=date.fillna("")).sort_values(
-        ["_no_desc", "_date"], ascending=[False, False], kind="stable")
+    todo = todo.assign(_priority=priority, _date=date.fillna("")).sort_values(
+        ["_priority", "_date"], ascending=[True, False], kind="stable")
+    if args.only_undescribed:
+        todo = todo[todo["_priority"] == 0]
+    if args.count:
+        print(len(todo))
+        return
     if args.limit:
         todo = todo.head(args.limit)
     print(f"Готово ранее: {len(done)}, в очереди: {len(todo)}")
