@@ -18,7 +18,7 @@ from pathlib import Path
 
 from memebot.config import settings
 from memebot.evaluation.datasets import silver_queries
-from memebot.evaluation.gold import JUDGE, gold_qrels
+from memebot.evaluation.gold import CONSENSUS, JUDGE, JUDGE_GEMMA, gold_qrels
 from memebot.evaluation.metrics import score
 from memebot.search.base import build_docs, load_memes
 from memebot.search.hybrid import rrf
@@ -28,7 +28,13 @@ RUNS_DIR = settings.data_dir / "runs"
 RESULTS_DIR = Path("results")
 
 
-def make_retriever(name: str, device: str | None):
+def make_retriever(name: str, device: str | None, memes=None):
+    if "siglip" in name.lower():  # поиск по картинке: нужны пути к изображениям, а не тексты
+        from memebot.search.image import ImageRetriever
+
+        retriever = ImageRetriever(name, device=device)
+        retriever.set_images(dict(zip(memes["meme_id"], memes["image_path"])))
+        return retriever
     if name == "bm25":
         from memebot.search.bm25 import BM25Retriever
 
@@ -52,7 +58,7 @@ def main() -> None:
     parser.add_argument("--fuse", nargs="*", default=[], help="имена уже посчитанных ранжирований для RRF")
     parser.add_argument("--field", default="human", choices=["human", "vlm", "human+vlm"])
     parser.add_argument("--device", default=None)
-    parser.add_argument("--set", dest="eval_set", default="silver", choices=["silver", "gold", "gold-judge"])
+    parser.add_argument("--set", dest="eval_set", default="silver", choices=["silver", "gold", "gold-judge", "gold-gemma", "gold-consensus"])
     args = parser.parse_args()
     keep_awake()
 
@@ -63,15 +69,16 @@ def main() -> None:
     doc_ids, docs = build_docs(memes, args.field)
     if args.eval_set == "gold":
         queries, qrels, _ = gold_qrels()
-    elif args.eval_set == "gold-judge":
-        queries, qrels, _ = gold_qrels(JUDGE)
+    elif args.eval_set.startswith("gold-"):
+        path = {"gold-judge": JUDGE, "gold-gemma": JUDGE_GEMMA, "gold-consensus": CONSENSUS}[args.eval_set]
+        queries, qrels, _ = gold_qrels(path)
     else:
         queries, qrels = silver_queries(memes)
     print(f"Документов: {len(docs)}, запросов: {len(queries)}")
     RUNS_DIR.mkdir(parents=True, exist_ok=True)
 
     for name in args.retrievers:
-        retriever = make_retriever(name, args.device)
+        retriever = make_retriever(name, args.device, memes)
         t0 = time.perf_counter()
         retriever.fit(doc_ids, docs)
         t_index = time.perf_counter() - t0

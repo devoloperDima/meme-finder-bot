@@ -39,7 +39,9 @@ def load_memes(scope: str = "all") -> pd.DataFrame:
                     continue
         if rows:
             vlm = pd.DataFrame(rows).drop_duplicates("meme_id", keep="last")
-            vlm = vlm[["meme_id", "ocr", "description", "situations", "emotions"]].add_prefix("vlm_")
+            if "is_meme" not in vlm:
+                vlm["is_meme"] = None
+            vlm = vlm[["meme_id", "ocr", "description", "situations", "emotions", "is_meme"]].add_prefix("vlm_")
             memes = memes.merge(vlm, left_on="meme_id", right_on="vlm_meme_id", how="left").drop(columns="vlm_meme_id")
     return memes
 

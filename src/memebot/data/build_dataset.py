@@ -19,6 +19,7 @@
 
 import difflib
 import io
+import json
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -76,6 +77,19 @@ EMPTY_TEXT_PHASH_MAX_DIST = 2  # без описаний сравнивать н
 TEXT_MEME_IDS = {"justatom", "yaneivan"}
 
 
+def read_posts(path: Path) -> list[dict]:
+    """Посты скрейпера в порядке файла. Сортировать по id нельзя: скрейпер идёт от новых к старым,
+    и досборка старых постов сдвинула бы id уже собранных мемов. Оборванную строку пропускаем."""
+    rows = []
+    with path.open(encoding="utf-8") as f:
+        for line in f:
+            try:
+                rows.append(json.loads(line))
+            except json.JSONDecodeError:
+                continue
+    return rows
+
+
 def load_raw(raw_dir: Path) -> tuple[list[Raw], int]:
     items: list[Raw] = []
     skipped_multi = 0
@@ -102,7 +116,7 @@ def load_raw(raw_dir: Path) -> tuple[list[Raw], int]:
 
     tg = raw_dir / SOURCES["tg_text_meme"]
     if (tg / "posts.jsonl").exists():
-        for row in pd.read_json(tg / "posts.jsonl", lines=True).sort_values("id").to_dict("records"):
+        for row in read_posts(tg / "posts.jsonl"):
             path = tg / "images" / f"{row['id']}.jpg"
             if path.exists():
                 items.append(Raw("tg_text_meme", int(row["id"]), path.read_bytes(), row["text"], date=row["date"]))
@@ -111,11 +125,11 @@ def load_raw(raw_dir: Path) -> tuple[list[Raw], int]:
         ch = raw_dir / f"tg_{channel}"
         if not (ch / "posts.jsonl").exists():
             continue
-        for row in pd.read_json(ch / "posts.jsonl", lines=True).fillna("").sort_values("id").to_dict("records"):
+        for row in read_posts(ch / "posts.jsonl"):
             path = ch / "images" / f"{row['id']}.jpg"
             if path.exists():
                 items.append(Raw(f"tg_{channel}", int(row["id"]), path.read_bytes(), "",
-                                 date=row["date"] or None, caption=str(row["text"]).strip()))
+                                 date=row.get("date") or None, caption=str(row.get("text") or "").strip()))
 
     return items, skipped_multi
 
@@ -171,8 +185,7 @@ def date_estimator(raw_dir: Path):
     if (tg / "date_anchors.json").exists():
         anchors.update({int(k): v for k, v in pd.read_json(tg / "date_anchors.json", typ="series").items()})
     if (tg / "posts.jsonl").exists():
-        posts = pd.read_json(tg / "posts.jsonl", lines=True)
-        anchors.update(dict(zip(posts["id"], posts["date"])))
+        anchors.update({r["id"]: r["date"] for r in read_posts(tg / "posts.jsonl") if r.get("date")})
     if not anchors:
         return lambda post_id: None
     ids = np.array(sorted(anchors))

@@ -23,6 +23,8 @@ QUERIES = EVAL_DIR / "gold_queries.jsonl"
 POOL = EVAL_DIR / "gold_pool.json"
 LABELS = EVAL_DIR / "gold_labels.jsonl"  # ручная разметка
 JUDGE = EVAL_DIR / "gold_judge.jsonl"  # оценки LLM-судьи (memebot.evaluation.llm_judge)
+JUDGE_GEMMA = EVAL_DIR / "gold_judge_gemma.jsonl"  # второй, независимый судья
+CONSENSUS = EVAL_DIR / "gold_judge_consensus.jsonl"  # минимум оценок судей
 
 
 def read_jsonl(path) -> list[dict]:
@@ -69,7 +71,7 @@ def build_pool(systems: list[str], depth: int, field: str, device: str | None) -
 
     runs = []
     for name in systems:
-        retriever = make_retriever(name, device)
+        retriever = make_retriever(name, device, memes)
         retriever.fit(doc_ids, docs)
         runs.append(retriever.search(texts, k=depth))
         print(f"{name}: готово")

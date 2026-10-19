@@ -21,6 +21,7 @@ from PIL import Image
 from tqdm import tqdm
 
 from memebot.config import settings
+from memebot.search.base import EVAL_SOURCES
 from memebot.utils import keep_awake
 
 DEFAULT_MODEL = "hf.co/Qwen/Qwen3-VL-8B-Instruct-GGUF:Q4_K_M"
@@ -30,7 +31,8 @@ PROMPT = """Ты описываешь мем для поисковой сист�
   "ocr": "весь текст на картинке дословно, на языке оригинала",
   "description": "2-4 предложения на русском: что изображено и в чём шутка",
   "situations": ["3-5 жизненных ситуаций, в которых этот мем уместно отправить, коротко"],
-  "emotions": ["1-3 эмоции: например, усталость, сарказм, радость"]
+  "emotions": ["1-3 эмоции: например, усталость, сарказм, радость"],
+  "is_meme": true или false — false, если это реклама, анонс канала, новость, розыгрыш или картинка без шутки
 }"""
 
 
@@ -59,10 +61,14 @@ def main() -> None:
     parser.add_argument("--limit", type=int, default=None, help="обработать не больше N новых мемов")
     parser.add_argument("--max-side", type=int, default=768)
     parser.add_argument("--out", default="vlm_captions.jsonl")
+    parser.add_argument("--scope", default="all", choices=["all", "eval"],
+                        help="eval — только зафиксированный корпус оценки (нужен для обучения раньше остального)")
     args = parser.parse_args()
     keep_awake()
 
     memes = pd.read_parquet(settings.processed_dir / "memes.parquet")
+    if args.scope == "eval":
+        memes = memes[memes["source"].isin(EVAL_SOURCES)]
     out_path = settings.processed_dir / args.out
 
     done = set()

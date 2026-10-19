@@ -35,6 +35,8 @@ class MemeSearcher:
     def __init__(self, dense_model: str = "deepvk/USER-bge-m3", field: str = "human",
                  device: str | None = None, recency_weight: float = 0.15):
         memes = load_memes()
+        if "vlm_is_meme" in memes:  # VLM пометил рекламу / анонсы / новости без шутки — в выдачу не берём
+            memes = memes[memes["vlm_is_meme"].map(lambda v: str(v).strip().lower() != "false")]
         self.image_path = dict(zip(memes["meme_id"], memes["image_path"]))
         self.freshness = freshness(memes)
         self.recency_weight = recency_weight
