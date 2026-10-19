@@ -23,14 +23,11 @@ function Py([string]$title, [string[]]$pyArgs) {
 }
 
 function RestartBot {
-    $botPid = Get-Content "data\logs\bot.pid" -ErrorAction SilentlyContinue
-    if ($botPid) { Stop-Process -Id $botPid -Force -ErrorAction SilentlyContinue }
-    Start-Sleep 3
-    $env:SEARCH_DEVICE = "cpu"  # GPU занят VLM, обучением или судьями
-    $bot = Start-Process -FilePath $py -ArgumentList '-m', 'memebot.bot.main' -WindowStyle Hidden -PassThru `
-        -RedirectStandardOutput "data\logs\bot.out" -RedirectStandardError "data\logs\bot.log"
-    $bot.Id | Out-File "data\logs\bot.pid" -Encoding ascii
-    Log "бот перезапущен (PID $($bot.Id))"
+    # Бот живёт в отдельном задании Планировщика (scripts\register_tasks.ps1), чтобы пережить конвейер
+    Stop-ScheduledTask -TaskPath "\MemeBot\" -TaskName "Bot" -ErrorAction SilentlyContinue
+    Start-Sleep 5
+    Start-ScheduledTask -TaskPath "\MemeBot\" -TaskName "Bot"
+    Log "бот перезапущен"
 }
 
 function UnloadOllama {
