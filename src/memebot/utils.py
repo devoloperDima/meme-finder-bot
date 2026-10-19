@@ -6,6 +6,18 @@ from typing import TypeVar
 T = TypeVar("T")
 
 
+def local_ollama_client(host: str):
+    """Клиент локальной Ollama: таймаут и без системного прокси.
+
+    trust_env=False: без переменных HTTP_PROXY httpx берёт прокси из настроек Windows (VPN на
+    127.0.0.1:10809), и запрос к localhost уходит в VPN, который отвечает 503 — так зависали
+    прогоны из Планировщика. Таймаут: запрос, попавший на перезапуск сервера, иначе ждёт вечно.
+    """
+    import ollama
+
+    return ollama.Client(host=host, timeout=300, trust_env=False)
+
+
 def retry_ollama(fn: Callable[..., T], *args, attempts: int = 5, base_delay: float = 15.0) -> T:
     """Повтор запроса к Ollama при 5xx, таймауте или обрыве соединения: сервер отвечает 503,
     пока загружает модель, а запрос, попавший на его перезапуск, может не вернуться никогда.

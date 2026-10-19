@@ -21,7 +21,7 @@ from memebot.config import settings
 from memebot.evaluation.gold import CONSENSUS, JUDGE, JUDGE_GEMMA, LABELS, POOL, load_labels, load_queries, read_jsonl
 from memebot.indexing.vlm_captions import DEFAULT_MODEL, load_image
 from memebot.search.base import load_memes
-from memebot.utils import keep_awake, retry_ollama, too_many_errors
+from memebot.utils import keep_awake, local_ollama_client, retry_ollama, too_many_errors
 
 PROMPT = """Пользователь Telegram-бота описал ситуацию и хочет отправить в ответ мем.
 Ситуация: «{query}»
@@ -67,7 +67,7 @@ def run(judge_name: str, limit: int | None) -> None:
     todo = [(q, m) for q, ms in pool.items() for m in ms if (q, m) not in done][:limit]
     print(f"{judge_name}: оценено ранее {len(done)}, в очереди {len(todo)}")
 
-    client = ollama.Client(host=settings.ollama_host, timeout=300)  # без таймаута зависший запрос ждёт вечно
+    client = local_ollama_client(settings.ollama_host)
     errors = 0
     with out_path.open("a", encoding="utf-8") as f:
         for qid, meme_id in tqdm(todo):

@@ -23,7 +23,7 @@ from tqdm import tqdm
 
 from memebot.config import settings
 from memebot.search.base import EVAL_SOURCES
-from memebot.utils import keep_awake, retry_ollama, too_many_errors
+from memebot.utils import keep_awake, local_ollama_client, retry_ollama, too_many_errors
 
 DEFAULT_MODEL = "hf.co/Qwen/Qwen3-VL-8B-Instruct-GGUF:Q4_K_M"
 
@@ -90,7 +90,7 @@ def main() -> None:
         todo = todo.head(args.limit)
     print(f"Готово ранее: {len(done)}, в очереди: {len(todo)}")
 
-    client = ollama.Client(host=settings.ollama_host, timeout=300)  # без таймаута зависший запрос ждёт вечно
+    client = local_ollama_client(settings.ollama_host)
     errors = 0
     with out_path.open("a", encoding="utf-8") as f:
         for row in tqdm(todo.itertuples(), total=len(todo)):

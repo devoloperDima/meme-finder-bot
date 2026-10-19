@@ -8,6 +8,10 @@ $env:PYTHONIOENCODING = "utf-8"
 $env:HF_HUB_DISABLE_PROGRESS_BARS = "1"
 $py = ".venv\Scripts\python.exe"
 $log = "data\logs\pipeline.log"
+# В системных настройках Windows стоит прокси VPN, и без исключения запросы к localhost (Ollama)
+# уходят в него и получают 503. Отключаем прокси для .NET-запросов скрипта и исключаем localhost для Python.
+[System.Net.WebRequest]::DefaultWebProxy = $null
+$env:NO_PROXY = "localhost,127.0.0.1,::1"
 
 function Log($msg) { Add-Content $log -Encoding UTF8 "$(Get-Date -Format 'dd.MM HH:mm:ss') $msg" }
 function Running($pattern) { [bool](Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like $pattern }) }
