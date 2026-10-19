@@ -13,6 +13,7 @@ import argparse
 import json
 import time
 
+import httpx
 import ollama
 from tqdm import tqdm
 
@@ -20,7 +21,7 @@ from memebot.config import settings
 from memebot.evaluation.gold import CONSENSUS, JUDGE, JUDGE_GEMMA, LABELS, POOL, load_labels, load_queries, read_jsonl
 from memebot.indexing.vlm_captions import DEFAULT_MODEL, load_image
 from memebot.search.base import load_memes
-from memebot.utils import keep_awake
+from memebot.utils import keep_awake, retry_ollama, too_many_errors
 
 PROMPT = """Пользователь Telegram-бота описал ситуацию и хочет отправить в ответ мем.
 Ситуация: «{query}»
@@ -66,15 +67,15 @@ def run(judge_name: str, limit: int | None) -> None:
     todo = [(q, m) for q, ms in pool.items() for m in ms if (q, m) not in done][:limit]
     print(f"{judge_name}: оценено ранее {len(done)}, в очереди {len(todo)}")
 
-    client = ollama.Client(host=settings.ollama_host)
+    client = ollama.Client(host=settings.ollama_host, timeout=300)  # без таймаута зависший запрос ждёт вечно
     errors = 0
     with out_path.open("a", encoding="utf-8") as f:
         for qid, meme_id in tqdm(todo):
             t0 = time.perf_counter()
             try:
                 image = load_image(settings.data_dir / memes.loc[meme_id, "image_path"], 768)
-                out = judge(client, model, queries[qid], memes.loc[meme_id, "description"], image)
-            except (json.JSONDecodeError, KeyError, ValueError, ollama.ResponseError) as e:
+                out = retry_ollama(judge, client, model, queries[qid], memes.loc[meme_id, "description"], image)
+            except (json.JSONDecodeError, KeyError, ValueError, ollama.ResponseError, httpx.TransportError) as e:
                 errors += 1
                 tqdm.write(f"{qid}/{meme_id}: {type(e).__name__}: {e}")
                 continue
@@ -82,6 +83,8 @@ def run(judge_name: str, limit: int | None) -> None:
             f.write(json.dumps(record, ensure_ascii=False) + "\n")
             f.flush()
     print(f"Ошибок: {errors}")
+    if too_many_errors(errors, len(todo)):
+        raise SystemExit(1)
 
 
 def kappa(a: list[int], b: list[int]) -> tuple[float, float]:

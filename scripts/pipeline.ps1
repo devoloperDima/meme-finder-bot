@@ -15,16 +15,31 @@ function WaitFor($pattern) { while (Running $pattern) { Start-Sleep 60 } }
 
 function Py([string]$title, [string[]]$pyArgs) {
     Log $title
-    # Вывод — во временный файл и потом в лог: так лог не блокируется на время шага
+    # Вывод — во временный файл и потом в лог: так лог не блокируется на время шага.
+    # Через cmd: перенаправление PowerShell 5.1 пишет UTF-16 и оборачивает stderr в ошибки PowerShell.
     $tmp = "data\logs\step.tmp"
-    & $py @pyArgs *> $tmp
-    Get-Content $tmp -Encoding UTF8 | Where-Object { $_ -notmatch 'it/s\]|s/it\]|^Batches|Warning|warn\(' } | Add-Content $log -Encoding UTF8
-    Log "$title`: exit $LASTEXITCODE"
+    cmd /c "$py $($pyArgs -join ' ') > $tmp 2>&1"
+    $script:code = $LASTEXITCODE
+    Get-Content $tmp -Encoding UTF8 | ForEach-Object { ($_ -split "`r")[-1] } |
+        Where-Object { $_ -notmatch 'it/s\]|s/it\]|^Batches|Warning|warn\(|^\s*$' } | Add-Content $log -Encoding UTF8
+    Log "$title`: exit $script:code"
+}
+
+function PyRetry([string]$title, [string[]]$pyArgs, [int]$tries = 3) {
+    # Шаги с Ollama (VLM, судьи) при массовых ошибках выходят с кодом 1 — повторяем, они продолжают с места
+    for ($i = 1; $i -le $tries; $i++) {
+        Py "$title (попытка $i)" $pyArgs
+        if ($script:code -eq 0) { return }
+        Start-Sleep 60
+    }
 }
 
 function RestartBot {
-    # Бот живёт в отдельном задании Планировщика (scripts\register_tasks.ps1), чтобы пережить конвейер
+    # Бот живёт в отдельном задании Планировщика (scripts\register_tasks.ps1), чтобы пережить конвейер.
+    # Остановка задания не убивает дочерний python — завершаем его явно, иначе два бота на одном токене.
     Stop-ScheduledTask -TaskPath "\MemeBot\" -TaskName "Bot" -ErrorAction SilentlyContinue
+    Get-CimInstance Win32_Process -Filter "Name='python.exe'" | Where-Object { $_.CommandLine -like '*memebot.bot.main*' } |
+        ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
     Start-Sleep 5
     Start-ScheduledTask -TaskPath "\MemeBot\" -TaskName "Bot"
     Log "бот перезапущен"
@@ -42,7 +57,7 @@ Log "=== старт конвейера"
 
 # 1. VLM-описания исходного корпуса (нужны для обучения на «ситуациях»)
 WaitFor '*memebot.indexing.vlm_captions*'
-Py "VLM: исходный корпус" @("-m", "memebot.indexing.vlm_captions", "--scope", "eval")
+PyRetry "VLM: исходный корпус" @("-m", "memebot.indexing.vlm_captions", "--scope", "eval")
 UnloadOllama
 
 # 2. Бейзлайны на текстах VLM (silver)
@@ -72,9 +87,9 @@ foreach ($m in $tuned) {
 # 4. Gold без человека: пул (TREC) с дообученными моделями, два независимых судьи, консенсус
 $systems = @("bm25", "intfloat/multilingual-e5-base", "deepvk/USER-bge-m3", "google/siglip2-base-patch16-256") + @($tuned | ForEach-Object { "models/$($_.Name)" })
 Py "пул gold" (@("-m", "memebot.evaluation.gold", "pool", "--depth", "10", "--systems") + $systems)
-Py "судья qwen" @("-m", "memebot.evaluation.llm_judge", "run", "--judge", "qwen")
+PyRetry "судья qwen" @("-m", "memebot.evaluation.llm_judge", "run", "--judge", "qwen")
 UnloadOllama
-Py "судья gemma" @("-m", "memebot.evaluation.llm_judge", "run", "--judge", "gemma")
+PyRetry "судья gemma" @("-m", "memebot.evaluation.llm_judge", "run", "--judge", "gemma")
 UnloadOllama
 Py "консенсус судей" @("-m", "memebot.evaluation.llm_judge", "consensus")
 Py "согласие судей" @("-m", "memebot.evaluation.llm_judge", "agreement")
@@ -91,7 +106,7 @@ foreach ($set in "gold-consensus", "gold-judge", "gold-gemma") {
 WaitFor '*scrape_channels.ps1*'
 Py "сборка датасета" @("-m", "memebot.data.build_dataset")
 RestartBot
-Py "VLM: новые мемы" @("-m", "memebot.indexing.vlm_captions")
+PyRetry "VLM: новые мемы" @("-m", "memebot.indexing.vlm_captions")
 UnloadOllama
 RestartBot
 Log "=== ГОТОВО"

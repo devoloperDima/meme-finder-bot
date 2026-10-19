@@ -15,6 +15,7 @@ import io
 import json
 import time
 
+import httpx
 import ollama
 import pandas as pd
 from PIL import Image
@@ -22,7 +23,7 @@ from tqdm import tqdm
 
 from memebot.config import settings
 from memebot.search.base import EVAL_SOURCES
-from memebot.utils import keep_awake
+from memebot.utils import keep_awake, retry_ollama, too_many_errors
 
 DEFAULT_MODEL = "hf.co/Qwen/Qwen3-VL-8B-Instruct-GGUF:Q4_K_M"
 
@@ -89,14 +90,15 @@ def main() -> None:
         todo = todo.head(args.limit)
     print(f"Готово ранее: {len(done)}, в очереди: {len(todo)}")
 
-    client = ollama.Client(host=settings.ollama_host)
+    client = ollama.Client(host=settings.ollama_host, timeout=300)  # без таймаута зависший запрос ждёт вечно
     errors = 0
     with out_path.open("a", encoding="utf-8") as f:
         for row in tqdm(todo.itertuples(), total=len(todo)):
             t0 = time.perf_counter()
             try:
-                result = caption(client, args.model, load_image(settings.data_dir / row.image_path, args.max_side))
-            except (json.JSONDecodeError, ollama.ResponseError) as e:
+                image = load_image(settings.data_dir / row.image_path, args.max_side)
+                result = retry_ollama(caption, client, args.model, image)
+            except (json.JSONDecodeError, ollama.ResponseError, httpx.TransportError) as e:
                 errors += 1
                 tqdm.write(f"{row.meme_id}: {type(e).__name__}: {e}")
                 continue
@@ -104,6 +106,8 @@ def main() -> None:
             f.write(json.dumps(record, ensure_ascii=False) + "\n")
             f.flush()
     print(f"Ошибок: {errors}")
+    if too_many_errors(errors, len(todo)):
+        raise SystemExit(1)
 
 
 if __name__ == "__main__":
